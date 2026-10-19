@@ -1,5 +1,7 @@
 import os
 import sqlite3
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -8,6 +10,21 @@ from dotenv import load_dotenv
 load_dotenv()
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 DB_PATH = "events.db"
+
+# --- 假網頁伺服器（用來應付 Render 的 Port 檢查，避免報錯） ---
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+def run_web():
+    server = HTTPServer(('0.0.0.0', 10000), SimpleHandler)
+    server.serve_forever()
+
+# 讓網頁伺服器在背景獨立運作，不影響 Discord 機器人
+threading.Thread(target=run_web, daemon=True).start()
+# -------------------------------------------------------------
 
 # 初始化資料庫
 def init_db():
@@ -68,7 +85,7 @@ class ClassSelectView(discord.ui.View):
         await update_event_message(self.original_message)
         await interaction.response.send_message(msg, ephemeral=True)
 
-    # 各職業按鈕 (已按要求更新碎夢、潮光、神相的愛心)
+    # 各職業按鈕 (保留你原本設定的愛心與顏色)
     @discord.ui.button(label="九靈 💜", style=discord.ButtonStyle.secondary, custom_id="cls_jiuling")
     async def jiuling(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.save_attendance(interaction, "九靈")
