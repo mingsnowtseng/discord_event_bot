@@ -36,7 +36,6 @@ def init_db():
                 category TEXT NOT NULL
             )
         """)
-        # 紀錄資料表：支援儲存多職業（以逗號分隔）與外找人數
         con.execute("""
             CREATE TABLE IF NOT EXISTS members (
                 message_id INTEGER NOT NULL,
@@ -54,7 +53,6 @@ init_db()
 intents = discord.Intents.default()
 client = commands.Bot(command_prefix="!", intents=intents)
 
-# 整合型主面板：所有狀態、外找與職業按鈕都在同一個視窗內
 class EventView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -69,7 +67,6 @@ class EventView(discord.ui.View):
             row = cur.fetchone()
 
             if is_ext:
-                # 外找按鈕：每次點擊人數 +1（上限 10 人，超過循環回 1）
                 if not row:
                     cur.execute("""
                         INSERT INTO members (message_id, identifier, status, classes, count, is_external) 
@@ -83,8 +80,7 @@ class EventView(discord.ui.View):
                     """, (new_count, msg_id, identifier))
                     msg = f"外找人數更新為：{new_count} 人"
             else:
-                # 一般身分切換 (出席、請假、再看看)
-                if row and row[0] == status and not row[1]: # 如果點擊相同的狀態且沒有外找記號
+                if row and row[0] == status and not row[1]:
                     cur.execute("DELETE FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
                     msg = f"已取消您的登記狀態。"
                 else:
@@ -109,14 +105,12 @@ class EventView(discord.ui.View):
             cur.execute("SELECT status, classes, is_external FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
             row = cur.fetchone()
 
-            # 檢查是否已登記出席或外找
             if not row or row[0] != "出席" or row[2] == 1:
                 await interaction.response.send_message("❌ 請先點擊上方「出席」或「外找」後，才能選擇職業！", ephemeral=True)
                 return
 
             current_classes = [c.strip() for c in row[1].split(",") if c.strip()]
 
-            # 複選切換邏輯：有則移除，無則加入
             if class_name in current_classes:
                 current_classes.remove(class_name)
                 msg = f"已取消職業：{class_name}"
@@ -133,7 +127,7 @@ class EventView(discord.ui.View):
         await update_event_message(interaction.message)
         await interaction.response.send_message(msg, ephemeral=True)
 
-    # 第一排：狀態操作按鈕 (全部灰色背景)
+    # 第一排：狀態操作按鈕 (全部放一起，灰色背景)
     @discord.ui.button(label="出席", style=discord.ButtonStyle.secondary, emoji="✅", custom_id="attend_btn", row=0)
     async def attend(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_status_action(interaction, "出席", is_ext=False)
