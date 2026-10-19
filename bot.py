@@ -139,9 +139,12 @@ class ExternalCountSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         count = int(self.values[0])
-        # 進入填寫每個人名字與使用下拉選單選擇職業的介面
+        # 切換成該人數對應的職業滾輪選單介面（直接在聊天室內互動，不開彈窗）
         view = ExternalDetailsView(self.original_message, count)
-        await interaction.response.send_message(f"🌐 您選擇外找 **{count} 人**。請在下方為每一位外找人員輸入名字並**透過滾輪選單選擇職業**：", view=view, ephemeral=True)
+        await interaction.response.edit_message(
+            content=f"🌐 您選擇外找 **{count} 人**。請在下方為每一位外找人員**透過滾輪選單選擇職業**：", 
+            view=view
+        )
 
 class ExternalCountView(discord.ui.View):
     def __init__(self, original_message: discord.Message):
@@ -149,21 +152,26 @@ class ExternalCountView(discord.ui.View):
         self.add_item(ExternalCountSelect(original_message))
 
 
-# 3. 職業滾輪選單 (Select Menu)
+# 3. 單一外找人員的職業滾輪選單
 class ExternalClassSelect(discord.ui.Select):
     def __init__(self, person_idx: int):
         self.person_idx = person_idx
         classes = ["九靈", "龍吟", "血河", "鐵衣", "素問", "碎夢", "潮光", "神相", "玄機"]
         options = [discord.SelectOption(label=c, value=c) for c in classes]
-        super().__init__(placeholder=f"請選擇第 {person_idx} 位人員的職業...", min_values=1, max_values=1, options=options, custom_id=f"ext_cls_{person_idx}")
+        super().__init__(
+            placeholder=f"請選擇第 {person_idx} 位人員的職業...", 
+            min_values=1, max_values=1, 
+            options=options, 
+            custom_id=f"ext_cls_{person_idx}",
+            row=min(person_idx - 1, 4)
+        )
 
     async def callback(self, interaction: discord.Interaction):
-        # 暫存選擇的職業到 view 中
         self.view.selected_classes[self.person_idx - 1] = self.values[0]
         await interaction.response.defer()
 
 
-# 4. 包含名字輸入與職業滾輪選單的外找詳細設定介面
+# 4. 聊天室內的外找詳細設定介面（包含最多 5 個滾輪選單與完成按鈕）
 class ExternalDetailsView(discord.ui.View):
     def __init__(self, original_message: discord.Message, count: int):
         super().__init__(timeout=300)
@@ -171,7 +179,7 @@ class ExternalDetailsView(discord.ui.View):
         self.count = count
         self.selected_classes = ["未填職業"] * count
 
-        # 最多顯示 5 個人的滾輪選單與文字按鈕，若超過 5 人則提示分批或依此類推
+        # Discord 限制一個 View 最多 5 個元件，若人數較多，我們支援前 5 人的獨立滾輪選單
         for i in range(1, min(count + 1, 6)):
             self.add_item(ExternalClassSelect(i))
 
