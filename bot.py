@@ -36,7 +36,6 @@ def init_db():
                 category TEXT NOT NULL
             )
         """)
-        # 紀錄資料表：支援個人登記與外找紀錄獨立共存
         con.execute("""
             CREATE TABLE IF NOT EXISTS members (
                 message_id INTEGER NOT NULL,
@@ -198,7 +197,7 @@ class ExternalDetailsView(discord.ui.View):
             cur = con.cursor()
             cur.execute("""
                 INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details) 
-                VALUES (?, ?, '出席', '', ?, 1, ?)
+                VALUES (?, ?, '出席', ?, ?, 1, ?)
                 ON CONFLICT(message_id, identifier) 
                 DO UPDATE SET count = ?, external_details = ?, status = '出席'
             """, (msg_id, identifier, self.count, details_str, self.count, details_str))
@@ -291,18 +290,21 @@ async def update_event_message(message: discord.Message):
             else:
                 attend_list.append(f"• 外找 ({count}人)")
         else:
-            total_attend_count += 1
-            class_display = f"【{classes_str}】" if classes_str else "【未選擇職業】"
-            if identifier.isdigit():
-                user_display = f"<@{identifier}>"
-            else:
-                user_display = f"**{identifier}** (手動)"
-
             if status == "出席":
+                total_attend_count += 1
+                class_display = f"【{classes_str}】" if classes_str else "【未選擇職業】"
+                if identifier.isdigit():
+                    user_display = f"<@{identifier}>"
+                else:
+                    user_display = f"**{identifier}** (手動)"
                 attend_list.append(f"• {class_display} {user_display}")
+            
             elif status == "請假":
+                user_display = f"<@{identifier}>" if identifier.isdigit() else f"**{identifier}** (手動)"
                 leave_list.append(f"• {user_display}")
+            
             elif status == "再看看":
+                user_display = f"<@{identifier}>" if identifier.isdigit() else f"**{identifier}** (手動)"
                 maybe_list.append(f"• {user_display}")
 
     embed = discord.Embed(title=f"⚔️ 打本登記活動", color=discord.Color.blue())
@@ -333,8 +335,13 @@ async def on_ready():
         print(e)
     print(f"機器人已登入：{client.user}")
 
+# 恢復了活動名稱、日期時間與分類（拓荒/一般打本）的參數選項
 @client.tree.command(name="create_event", description="建立新的打本公告")
-@app_commands.describe(activity="活動名稱", datetime_text="日期與時間 (例如 2026-10-25 20:00)", category="分類")
+@app_commands.describe(
+    activity="請輸入活動名稱（例如：英雄決戰）", 
+    datetime_text="請輸入日期與時間（例如：10/19 9:30）", 
+    category="請選擇副本或拓荒類型"
+)
 @app_commands.choices(category=[
     app_commands.Choice(name="拓荒", value="拓荒"),
     app_commands.Choice(name="一般打本", value="一般打本")
@@ -386,4 +393,18 @@ async def add_member(interaction: discord.Interaction, message_id: str, name: st
         cur = con.cursor()
         cur.execute("SELECT activity FROM events WHERE message_id = ?", (msg_id,))
         if not cur.fetchone():
-            await interaction
+            await interaction.followup.send("此訊息不是約戰公告，無法登記！", ephemeral=True)
+            return
+
+        cur.execute("""
+            INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details) 
+            VALUES (?, ?, '出席', ?, ?, 1, 0, '')
+            ON CONFLICT(message_id, identifier) 
+            DO UPDATE SET status = '出席', classes = ?, count = 1, is_external = 0, external_details = ''
+        """, (msg_id, name, class_name, class_name))
+        con.commit()
+
+    await update_event_message(target_message)
+    await interaction.followup.send(f"已成功幫【{name} ({class_name})】手動登記出席！", ephemeral=True)
+
+client.run(TOKEN)
