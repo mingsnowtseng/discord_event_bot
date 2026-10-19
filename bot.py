@@ -195,12 +195,13 @@ class ExternalDetailsView(discord.ui.View):
 
         with sqlite3.connect(DB_PATH) as con:
             cur = con.cursor()
+            # 修正：確保 INSERT 的 7 個欄位與後方 DO UPDATE 的 2 個更新欄位都有完整對應的變數 (共 9 個參數)
             cur.execute("""
                 INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details) 
                 VALUES (?, ?, '出席', ?, ?, 1, ?)
                 ON CONFLICT(message_id, identifier) 
                 DO UPDATE SET count = ?, external_details = ?, status = '出席'
-            """, (msg_id, identifier, self.count, details_str, self.count, details_str))
+            """, (msg_id, identifier, details_str, self.count, details_str, self.count, details_str))
             con.commit()
 
         await update_event_message(self.original_message)
@@ -395,9 +396,10 @@ async def add_member(interaction: discord.Interaction, message_id: str, name: st
             await interaction.followup.send("此訊息不是約戰公告，無法登記！", ephemeral=True)
             return
 
+        # 修正：調整 INSERT 的參數與 DO UPDATE 匹配，修復原本傳入參數數量不符的問題
         cur.execute("""
             INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details) 
-            VALUES (?, ?, '出席', ?, ?, 1, 0, '')
+            VALUES (?, ?, '出席', ?, 1, 0, '')
             ON CONFLICT(message_id, identifier) 
             DO UPDATE SET status = '出席', classes = ?, count = 1, is_external = 0, external_details = ''
         """, (msg_id, name, class_name, class_name))
