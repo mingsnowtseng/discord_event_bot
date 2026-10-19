@@ -132,7 +132,7 @@ class EventView(discord.ui.View):
     async def attend(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_status_action(interaction, "出席", is_ext=False)
 
-    @discord.ui.button(label="外找", style=discord.ButtonStyle.secondary, emoji="➕", custom_id="external_btn", row=0)
+    @discord.ui.button(label="外找", style=discord.ButtonStyle.secondary, emoji="⚠️", custom_id="external_btn", row=0)
     async def external(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_status_action(interaction, "出席", is_ext=True)
 
