@@ -198,7 +198,7 @@ class ExternalDetailsView(discord.ui.View):
             cur = con.cursor()
             cur.execute("""
                 INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details) 
-                VALUES (?, ?, '出席', ?, ?, 1, ?)
+                VALUES (?, ?, '出席', '', ?, 1, ?)
                 ON CONFLICT(message_id, identifier) 
                 DO UPDATE SET count = ?, external_details = ?, status = '出席'
             """, (msg_id, identifier, self.count, details_str, self.count, details_str))
@@ -291,21 +291,18 @@ async def update_event_message(message: discord.Message):
             else:
                 attend_list.append(f"• 外找 ({count}人)")
         else:
+            total_attend_count += 1
+            class_display = f"【{classes_str}】" if classes_str else "【未選擇職業】"
+            if identifier.isdigit():
+                user_display = f"<@{identifier}>"
+            else:
+                user_display = f"**{identifier}** (手動)"
+
             if status == "出席":
-                total_attend_count += 1
-                class_display = f"【{classes_str}】" if classes_str else "【未選擇職業】"
-                if identifier.isdigit():
-                    user_display = f"<@{identifier}>"
-                else:
-                    user_display = f"**{identifier}** (手動)"
                 attend_list.append(f"• {class_display} {user_display}")
-            
             elif status == "請假":
-                user_display = f"<@{identifier}>" if identifier.isdigit() else f"**{identifier}** (手動)"
                 leave_list.append(f"• {user_display}")
-            
             elif status == "再看看":
-                user_display = f"<@{identifier}>" if identifier.isdigit() else f"**{identifier}** (手動)"
                 maybe_list.append(f"• {user_display}")
 
     embed = discord.Embed(title=f"⚔️ 打本登記活動", color=discord.Color.blue())
@@ -389,18 +386,4 @@ async def add_member(interaction: discord.Interaction, message_id: str, name: st
         cur = con.cursor()
         cur.execute("SELECT activity FROM events WHERE message_id = ?", (msg_id,))
         if not cur.fetchone():
-            await interaction.followup.send("此訊息不是約戰公告，無法登記！", ephemeral=True)
-            return
-
-        cur.execute("""
-            INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details) 
-            VALUES (?, ?, '出席', ?, 1, 0, '')
-            ON CONFLICT(message_id, identifier) 
-            DO UPDATE SET status = '出席', classes = ?, count = 1, is_external = 0, external_details = ''
-        """, (msg_id, name, class_name, class_name))
-        con.commit()
-
-    await update_event_message(target_message)
-    await interaction.followup.send(f"已成功幫【{name} ({class_name})】手動登記出席！", ephemeral=True)
-
-client.run(TOKEN)
+            await interaction
