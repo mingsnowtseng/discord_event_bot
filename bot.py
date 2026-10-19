@@ -64,6 +64,12 @@ class EventView(discord.ui.View):
             cur.execute("SELECT status, class_name FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
             row = cur.fetchone()
 
+            # 如果點擊的是職業按鈕，必須先檢查使用者是否已經是「出席」狀態
+            if class_name is not None:
+                if not row or row[0] != "出席":
+                    await interaction.response.send_message("❌ 請先點擊「出席」後，才能選擇職業！", ephemeral=True)
+                    return
+
             if row and row[0] == status and row[1] == class_name:
                 cur.execute("DELETE FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
                 msg = f"已取消您的登記狀態。"
@@ -74,7 +80,7 @@ class EventView(discord.ui.View):
                     ON CONFLICT(message_id, identifier) 
                     DO UPDATE SET status = ?, class_name = ?
                 """, (msg_id, identifier, status, class_name, status, class_name))
-                if class_name:
+                if class_name and class_name != "未選擇職業":
                     msg = f"成功切換至：【{status} - {class_name}】"
                 else:
                     msg = f"成功切換至：【{status}】"
@@ -90,11 +96,11 @@ class EventView(discord.ui.View):
 
     @discord.ui.button(label="請假", style=discord.ButtonStyle.secondary, emoji="❌", custom_id="leave_btn", row=0)
     async def leave(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_action(interaction, "請假")
+        await self.handle_action(interaction, "請假", None)
 
     @discord.ui.button(label="再看看", style=discord.ButtonStyle.secondary, emoji="👀", custom_id="maybe_btn", row=0)
     async def maybe(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_action(interaction, "再看看")
+        await self.handle_action(interaction, "再看看", None)
 
     # 各職業出席按鈕
     @discord.ui.button(label="九靈 💜", style=discord.ButtonStyle.secondary, custom_id="cls_jiuling", row=1)
@@ -171,7 +177,6 @@ async def update_event_message(message: discord.Message):
     embed.add_field(name="日期", value=dt, inline=False)
     embed.add_field(name="分類", value=category, inline=False)
     
-    # 組合出席名單，並在最下方加上總人數統計
     if attend_list:
         attend_text = "\n".join(attend_list) + f"\n\n**總計出席人數：{len(attend_list)} 人**"
     else:
