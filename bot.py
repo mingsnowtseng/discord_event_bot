@@ -85,16 +85,16 @@ class ClassSelectView(discord.ui.View):
         await update_event_message(self.original_message)
         await interaction.response.send_message(msg, ephemeral=True)
 
-    # 各職業按鈕 (保留你原本設定的愛心與顏色)
+    # 各職業按鈕 (全部改為 secondary 灰色背景)
     @discord.ui.button(label="九靈 💜", style=discord.ButtonStyle.secondary, custom_id="cls_jiuling")
     async def jiuling(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.save_attendance(interaction, "九靈")
 
-    @discord.ui.button(label="龍吟 💚", style=discord.ButtonStyle.success, custom_id="cls_longyin")
+    @discord.ui.button(label="龍吟 💚", style=discord.ButtonStyle.secondary, custom_id="cls_longyin")
     async def longyin(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.save_attendance(interaction, "龍吟")
 
-    @discord.ui.button(label="血河 💖", style=discord.ButtonStyle.danger, custom_id="cls_xuehe")
+    @discord.ui.button(label="血河 💖", style=discord.ButtonStyle.secondary, custom_id="cls_xuehe")
     async def xuehe(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.save_attendance(interaction, "血河")
 
@@ -106,15 +106,15 @@ class ClassSelectView(discord.ui.View):
     async def suwen(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.save_attendance(interaction, "素問")
 
-    @discord.ui.button(label="碎夢 🩶", style=discord.ButtonStyle.primary, custom_id="cls_suimeng")
+    @discord.ui.button(label="碎夢 🩶", style=discord.ButtonStyle.secondary, custom_id="cls_suimeng")
     async def suimeng(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.save_attendance(interaction, "碎夢")
 
-    @discord.ui.button(label="潮光 💙", style=discord.ButtonStyle.primary, custom_id="cls_chaoguang")
+    @discord.ui.button(label="潮光 💙", style=discord.ButtonStyle.secondary, custom_id="cls_chaoguang")
     async def chaoguang(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.save_attendance(interaction, "潮光")
 
-    @discord.ui.button(label="神相 🩵", style=discord.ButtonStyle.primary, custom_id="cls_shenxiang")
+    @discord.ui.button(label="神相 🩵", style=discord.ButtonStyle.secondary, custom_id="cls_shenxiang")
     async def shenxiang(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.save_attendance(interaction, "神相")
 
