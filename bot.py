@@ -183,6 +183,9 @@ class ExternalDetailsView(discord.ui.View):
 
     @discord.ui.button(label="完成登記", style=discord.ButtonStyle.green, emoji="✅", row=4)
     async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # 加入 defer 避免 Discord 判定逾時（未及時回應）
+        await interaction.response.defer(ephemeral=True)
+
         msg_id = self.original_message.id
         identifier = f"ext_group_{interaction.user.id}"
         
@@ -195,7 +198,6 @@ class ExternalDetailsView(discord.ui.View):
 
         with sqlite3.connect(DB_PATH) as con:
             cur = con.cursor()
-            # 修正：確保 INSERT 的 7 個欄位與後方 DO UPDATE 的 2 個更新欄位都有完整對應的變數 (共 9 個參數)
             cur.execute("""
                 INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details) 
                 VALUES (?, ?, '出席', ?, ?, 1, ?)
@@ -205,7 +207,13 @@ class ExternalDetailsView(discord.ui.View):
             con.commit()
 
         await update_event_message(self.original_message)
-        await interaction.response.edit_message(content=f"✅ 成功登記外找 {self.count} 人！", view=None)
+        
+        # 使用 followup 編輯私密訊息
+        await interaction.followup.edit_message(
+            message_id=interaction.message.id,
+            content=f"✅ 成功登記外找 {self.count} 人！", 
+            view=None
+        )
 
 
 # 5. 常駐主選單
@@ -396,7 +404,6 @@ async def add_member(interaction: discord.Interaction, message_id: str, name: st
             await interaction.followup.send("此訊息不是約戰公告，無法登記！", ephemeral=True)
             return
 
-        # 修正：調整 INSERT 的參數與 DO UPDATE 匹配，修復原本傳入參數數量不符的問題
         cur.execute("""
             INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details) 
             VALUES (?, ?, '出席', ?, 1, 0, '')
