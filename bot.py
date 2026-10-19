@@ -5,7 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 from flask import Flask
 
-# ================= 1. 建立 Flask 網頁伺服器 (防止 Render 關閉網頁就斷線) =================
+# ================= 1. 保持 Render 活躍的網頁伺服器 =================
 app = Flask("")
 
 
@@ -30,12 +30,12 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
-# ================= 3. 打本登記的按鈕與互動介面 =================
+# ================= 3. 打本登記按鈕與視圖類別 =================
 class EventView(discord.ui.View):
 
   def __init__(self):
     super().__init__(timeout=None)
-    # 用字典儲存各個狀態的人員名單 (儲存 Member 物件)
+    # 儲存各個分類的人員名單
     self.participants = {"出席": [], "外找": [], "請假": [], "再看看": []}
 
   async def update_status(
@@ -43,16 +43,16 @@ class EventView(discord.ui.View):
   ):
     user = interaction.user
 
-    # 1. 先從所有清單中移除該使用者 (確保不會同時出現在多個分類)
+    # 1. 從所有清單中移除該使用者（避免重複或留在舊分類）
     for status in self.participants:
       self.participants[status] = [
           u for u in self.participants[status] if u.id != user.id
       ]
 
-    # 2. 將使用者加入到點擊的新分類清單中
+    # 2. 將使用者加入點擊的新分類清單中
     self.participants[target_status].append(user)
 
-    # 3. 重新建立 Embed 內容
+    # 3. 重新建立 Embed 訊息內容
     embed = discord.Embed(
         title="⚔️ 打本登記活動", color=discord.Color.from_rgb(47, 49, 54)
     )
@@ -65,7 +65,6 @@ class EventView(discord.ui.View):
           "\n".join([f"• {u.mention}" for u in users]) if users else "目前無人"
       )
 
-      # 加上對應的符號
       if status == "出席":
         prefix = "✅"
       elif status == "外找":
@@ -84,7 +83,7 @@ class EventView(discord.ui.View):
     total_attend = len(self.participants["出席"])
     embed.set_footer(text=f"總計出席人數：{total_attend} 人")
 
-    # 4. 更新訊息介面
+    # 4. 更新 Discord 上的訊息畫面
     await interaction.response.edit_message(embed=embed, view=self)
 
   @discord.ui.button(
@@ -143,18 +142,17 @@ async def create_event(interaction: discord.Interaction):
 async def on_ready():
   print(f"目前登入身分 --> {bot.user}")
   try:
-    # 自動同步斜線指令到 Discord
     synced = await bot.tree.sync()
     print(f"成功同步了 {len(synced)} 個斜線指令")
   except Exception as e:
     print(f"同步指令失敗: {e}")
 
 
-# ================= 6. 執行主程式 =================
+# ================= 6. 程式主入口 =================
 if __name__ == "__main__":
-  # 先啟動背景的網頁伺服器
+  # 先啟動背景網頁服務（確保 Render 不會關閉）
   keep_alive()
 
-  # 取得環境變數中的 Token 並啟動機器人
+  # 啟動 Discord 機器人
   TOKEN = os.environ.get("DISCORD_TOKEN")
   bot.run(TOKEN)
