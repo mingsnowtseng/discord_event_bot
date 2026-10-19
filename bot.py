@@ -139,8 +139,9 @@ class ExternalCountSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         count = int(self.values[0])
-        modal = ExternalDetailsModal(self.original_message, count)
-        await interaction.response.send_modal(modal)
+        # 進入填寫每個人名字與使用下拉選單選擇職業的介面
+        view = ExternalDetailsView(self.original_message, count)
+        await interaction.response.send_message(f"🌐 您選擇外找 **{count} 人**。請在下方為每一位外找人員輸入名字並**透過滾輪選單選擇職業**：", view=view, ephemeral=True)
 
 class ExternalCountView(discord.ui.View):
     def __init__(self, original_message: discord.Message):
@@ -148,40 +149,41 @@ class ExternalCountView(discord.ui.View):
         self.add_item(ExternalCountSelect(original_message))
 
 
-# 3. 根據選擇的人數動態生成「名字 + 職業」的彈出表單 (Modal)
-class ExternalDetailsModal(discord.ui.Modal):
+# 3. 職業滾輪選單 (Select Menu)
+class ExternalClassSelect(discord.ui.Select):
+    def __init__(self, person_idx: int):
+        self.person_idx = person_idx
+        classes = ["九靈", "龍吟", "血河", "鐵衣", "素問", "碎夢", "潮光", "神相", "玄機"]
+        options = [discord.SelectOption(label=c, value=c) for c in classes]
+        super().__init__(placeholder=f"請選擇第 {person_idx} 位人員的職業...", min_values=1, max_values=1, options=options, custom_id=f"ext_cls_{person_idx}")
+
+    async def callback(self, interaction: discord.Interaction):
+        # 暫存選擇的職業到 view 中
+        self.view.selected_classes[self.person_idx - 1] = self.values[0]
+        await interaction.response.defer()
+
+
+# 4. 包含名字輸入與職業滾輪選單的外找詳細設定介面
+class ExternalDetailsView(discord.ui.View):
     def __init__(self, original_message: discord.Message, count: int):
-        super().__init__(title=f"外找人員詳細設定 (共 {count} 人)")
+        super().__init__(timeout=300)
         self.original_message = original_message
         self.count = count
-        self.inputs = []
+        self.selected_classes = ["未填職業"] * count
 
+        # 最多顯示 5 個人的滾輪選單與文字按鈕，若超過 5 人則提示分批或依此類推
         for i in range(1, min(count + 1, 6)):
-            text_input = discord.ui.TextInput(
-                label=f"第 {i} 位外找人員名字 (選填)",
-                placeholder=f"例如: 玩家{i} 或 留空自動編號",
-                required=False,
-                max_length=30
-            )
-            class_input = discord.ui.TextInput(
-                label=f"第 {i} 位職業 (九靈/龍吟/血河/鐵衣/素問/碎夢/潮光/神相/玄機)",
-                placeholder="請輸入職業名稱",
-                required=True,
-                max_length=10
-            )
-            self.add_item(text_input)
-            self.add_item(class_input)
-            self.inputs.append((text_input, class_input))
+            self.add_item(ExternalClassSelect(i))
 
-    async def on_submit(self, interaction: discord.Interaction):
+    @discord.ui.button(label="完成登記", style=discord.ButtonStyle.green, emoji="✅", row=4)
+    async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         msg_id = self.original_message.id
         identifier = f"ext_group_{interaction.user.id}"
         
         details = []
-        for idx, (name_box, cls_box) in enumerate(self.inputs, 1):
-            name = name_box.value.strip() or f"外找人員{idx}"
-            cls = cls_box.value.strip() or "未填職業"
-            details.append(f"【{cls}】 {name}")
+        for i in range(1, min(self.count + 1, 6)):
+            cls = self.selected_classes[i - 1]
+            details.append(f"【{cls}】 外找人員{i}")
 
         details_str = "\n".join(details)
 
@@ -196,10 +198,10 @@ class ExternalDetailsModal(discord.ui.Modal):
             con.commit()
 
         await update_event_message(self.original_message)
-        await interaction.response.send_message(f"✅ 成功登記外找 {self.count} 人！", ephemeral=True)
+        await interaction.response.edit_message(content=f"✅ 成功登記外找 {self.count} 人！", view=None)
 
 
-# 4. 常駐主選單
+# 5. 常駐主選單
 class EventView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -237,7 +239,6 @@ class EventView(discord.ui.View):
         else:
             await interaction.response.send_message(f"成功切換至：【{status}】", ephemeral=True)
 
-    # 第一排：狀態操作按鈕 (外換成 ⚠️ 表情符號)
     @discord.ui.button(label="出席", style=discord.ButtonStyle.secondary, emoji="✅", custom_id="attend_btn", row=0)
     async def attend(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_status_action(interaction, "出席")
