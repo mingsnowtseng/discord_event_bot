@@ -44,6 +44,7 @@ def init_db():
                 classes TEXT DEFAULT '',
                 count INTEGER DEFAULT 1,
                 is_external BOOLEAN DEFAULT 0,
+                external_details TEXT DEFAULT '',
                 PRIMARY KEY (message_id, identifier)
             )
         """)
@@ -53,70 +54,32 @@ init_db()
 intents = discord.Intents.default()
 client = commands.Bot(command_prefix="!", intents=intents)
 
-class EventView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
+# 1. 一般玩家點擊「出席」後選職業的私密介面 (複選按鈕)
+class ClassSelectModalView(discord.ui.View):
+    def __init__(self, original_message: discord.Message):
+        super().__init__(timeout=60)
+        self.original_message = original_message
 
-    async def handle_status_action(self, interaction: discord.Interaction, status: str, is_ext: bool = False):
-        msg_id = interaction.message.id
-        identifier = f"ext_{interaction.user.id}" if is_ext else str(interaction.user.id)
-
-        with sqlite3.connect(DB_PATH) as con:
-            cur = con.cursor()
-            cur.execute("SELECT status, count FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
-            row = cur.fetchone()
-
-            if is_ext:
-                if not row:
-                    cur.execute("""
-                        INSERT INTO members (message_id, identifier, status, classes, count, is_external) 
-                        VALUES (?, ?, '出席', '', 1, 1)
-                    """, (msg_id, identifier))
-                    msg = "已新增外找 1 人！請點擊下方按鈕選擇職業（可複選）。"
-                else:
-                    new_count = row[1] + 1 if row[1] < 10 else 1
-                    cur.execute("""
-                        UPDATE members SET count = ?, status = '出席', is_external = 1 WHERE message_id = ? AND identifier = ?
-                    """, (new_count, msg_id, identifier))
-                    msg = f"外找人數更新為：{new_count} 人"
-            else:
-                if row and row[0] == status and not row[1]:
-                    cur.execute("DELETE FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
-                    msg = f"已取消您的登記狀態。"
-                else:
-                    cur.execute("""
-                        INSERT INTO members (message_id, identifier, status, classes, count, is_external) 
-                        VALUES (?, ?, ?, '', 1, 0)
-                        ON CONFLICT(message_id, identifier) 
-                        DO UPDATE SET status = ?, classes = '', count = 1, is_external = 0
-                    """, (msg_id, identifier, status, status))
-                    msg = f"成功切換至：【{status}】"
-            con.commit()
-
-        await update_event_message(interaction.message)
-        await interaction.response.send_message(msg, ephemeral=True)
-
-    async def handle_class_toggle(self, interaction: discord.Interaction, class_name: str):
-        msg_id = interaction.message.id
+    async def save_class(self, interaction: discord.Interaction, class_name: str):
+        msg_id = self.original_message.id
         identifier = str(interaction.user.id)
 
         with sqlite3.connect(DB_PATH) as con:
             cur = con.cursor()
-            cur.execute("SELECT status, classes, is_external FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
+            cur.execute("SELECT status, classes FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
             row = cur.fetchone()
 
-            if not row or row[0] != "出席" or row[2] == 1:
-                await interaction.response.send_message("❌ 請先點擊上方「出席」或「外找」後，才能選擇職業！", ephemeral=True)
+            if not row or row[0] != "出席":
+                await interaction.response.send_message("❌ 請先點擊主選單的「出席」後，才能選擇職業！", ephemeral=True)
                 return
 
             current_classes = [c.strip() for c in row[1].split(",") if c.strip()]
-
             if class_name in current_classes:
                 current_classes.remove(class_name)
                 msg = f"已取消職業：{class_name}"
             else:
                 current_classes.append(class_name)
-                msg = f"已新增職業：{class_name} (目前職業：{', '.join(current_classes)})"
+                msg = f"已新增職業：{class_name}"
 
             new_classes_str = ",".join(current_classes)
             cur.execute("""
@@ -124,62 +87,173 @@ class EventView(discord.ui.View):
             """, (new_classes_str, msg_id, identifier))
             con.commit()
 
-        await update_event_message(interaction.message)
+        await update_event_message(self.original_message)
         await interaction.response.send_message(msg, ephemeral=True)
 
-    # 第一排：狀態操作按鈕 (全部放一起，灰色背景)
+    @discord.ui.button(label="九靈 💜", style=discord.ButtonStyle.secondary, custom_id="cls_jiuling", row=0)
+    async def jiuling(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.save_class(interaction, "九靈")
+
+    @discord.ui.button(label="龍吟 💚", style=discord.ButtonStyle.secondary, custom_id="cls_longyin", row=0)
+    async def longyin(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.save_class(interaction, "龍吟")
+
+    @discord.ui.button(label="血河 💖", style=discord.ButtonStyle.secondary, custom_id="cls_xuehe", row=0)
+    async def xuehe(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.save_class(interaction, "血河")
+
+    @discord.ui.button(label="鐵衣 🧡", style=discord.ButtonStyle.secondary, custom_id="cls_tieyi", row=0)
+    async def tieyi(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.save_class(interaction, "鐵衣")
+
+    @discord.ui.button(label="素問 🩷", style=discord.ButtonStyle.secondary, custom_id="cls_suwen", row=1)
+    async def suwen(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.save_class(interaction, "素問")
+
+    @discord.ui.button(label="碎夢 🩶", style=discord.ButtonStyle.secondary, custom_id="cls_suimeng", row=1)
+    async def suimeng(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.save_class(interaction, "碎夢")
+
+    @discord.ui.button(label="潮光 💙", style=discord.ButtonStyle.secondary, custom_id="cls_chaoguang", row=1)
+    async def chaoguang(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.save_class(interaction, "潮光")
+
+    @discord.ui.button(label="神相 🩵", style=discord.ButtonStyle.secondary, custom_id="cls_shenxiang", row=2)
+    async def shenxiang(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.save_class(interaction, "神相")
+
+    @discord.ui.button(label="玄機 💛", style=discord.ButtonStyle.secondary, custom_id="cls_xuanji", row=2)
+    async def xuanji(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.save_class(interaction, "玄機")
+
+
+# 2. 外找人數選擇選單 (1 ~ 12 人)
+class ExternalCountSelect(discord.ui.Select):
+    def __init__(self, original_message: discord.Message):
+        self.original_message = original_message
+        options = [
+            discord.SelectOption(label=f"外找 {i} 人", value=str(i), description=f"登記帶領 {i} 位外找人員")
+            for i in range(1, 13)
+        ]
+        super().__init__(placeholder="請選擇外找人數 (1 ~ 12 人)...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        count = int(self.values[0])
+        modal = ExternalDetailsModal(self.original_message, count)
+        await interaction.response.send_modal(modal)
+
+class ExternalCountView(discord.ui.View):
+    def __init__(self, original_message: discord.Message):
+        super().__init__(timeout=60)
+        self.add_item(ExternalCountSelect(original_message))
+
+
+# 3. 根據選擇的人數動態生成「名字 + 職業」的彈出表單 (Modal)
+class ExternalDetailsModal(discord.ui.Modal):
+    def __init__(self, original_message: discord.Message, count: int):
+        super().__init__(title=f"外找人員詳細設定 (共 {count} 人)")
+        self.original_message = original_message
+        self.count = count
+        self.inputs = []
+
+        for i in range(1, min(count + 1, 6)):
+            text_input = discord.ui.TextInput(
+                label=f"第 {i} 位外找人員名字 (選填)",
+                placeholder=f"例如: 玩家{i} 或 留空自動編號",
+                required=False,
+                max_length=30
+            )
+            class_input = discord.ui.TextInput(
+                label=f"第 {i} 位職業 (九靈/龍吟/血河/鐵衣/素問/碎夢/潮光/神相/玄機)",
+                placeholder="請輸入職業名稱",
+                required=True,
+                max_length=10
+            )
+            self.add_item(text_input)
+            self.add_item(class_input)
+            self.inputs.append((text_input, class_input))
+
+    async def on_submit(self, interaction: discord.Interaction):
+        msg_id = self.original_message.id
+        identifier = f"ext_group_{interaction.user.id}"
+        
+        details = []
+        for idx, (name_box, cls_box) in enumerate(self.inputs, 1):
+            name = name_box.value.strip() or f"外找人員{idx}"
+            cls = cls_box.value.strip() or "未填職業"
+            details.append(f"【{cls}】 {name}")
+
+        details_str = "\n".join(details)
+
+        with sqlite3.connect(DB_PATH) as con:
+            cur = con.cursor()
+            cur.execute("""
+                INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details) 
+                VALUES (?, ?, '出席', '', ?, 1, ?)
+                ON CONFLICT(message_id, identifier) 
+                DO UPDATE SET count = ?, external_details = ?, status = '出席'
+            """, (msg_id, identifier, self.count, details_str, self.count, details_str))
+            con.commit()
+
+        await update_event_message(self.original_message)
+        await interaction.response.send_message(f"✅ 成功登記外找 {self.count} 人！", ephemeral=True)
+
+
+# 4. 常駐主選單
+class EventView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    async def handle_status_action(self, interaction: discord.Interaction, status: str):
+        msg_id = interaction.message.id
+        identifier = str(interaction.user.id)
+
+        with sqlite3.connect(DB_PATH) as con:
+            cur = con.cursor()
+            cur.execute("SELECT status, is_external FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
+            row = cur.fetchone()
+
+            if row and row[0] == status and not row[1]:
+                cur.execute("DELETE FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
+                msg = f"已取消您的登記狀態。"
+                con.commit()
+                await update_event_message(interaction.message)
+                await interaction.response.send_message(msg, ephemeral=True)
+                return
+            else:
+                cur.execute("""
+                    INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details) 
+                    VALUES (?, ?, ?, '', 1, 0, '')
+                    ON CONFLICT(message_id, identifier) 
+                    DO UPDATE SET status = ?, classes = '', count = 1, is_external = 0, external_details = ''
+                """, (msg_id, identifier, status, status))
+                con.commit()
+
+        await update_event_message(interaction.message)
+
+        if status == "出席":
+            view = ClassSelectModalView(interaction.message)
+            await interaction.response.send_message("✅ 已登記出席！請點擊下方按鈕選擇你的職業（可複選）：", view=view, ephemeral=True)
+        else:
+            await interaction.response.send_message(f"成功切換至：【{status}】", ephemeral=True)
+
+    # 第一排：狀態操作按鈕 (外換成 ⚠️ 表情符號)
     @discord.ui.button(label="出席", style=discord.ButtonStyle.secondary, emoji="✅", custom_id="attend_btn", row=0)
     async def attend(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_status_action(interaction, "出席", is_ext=False)
+        await self.handle_status_action(interaction, "出席")
 
     @discord.ui.button(label="外找", style=discord.ButtonStyle.secondary, emoji="⚠️", custom_id="external_btn", row=0)
     async def external(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_status_action(interaction, "出席", is_ext=True)
+        view = ExternalCountView(interaction.message)
+        await interaction.response.send_message("🌐 請使用下方選單選擇外找人數（1 ~ 12 人）：", view=view, ephemeral=True)
 
     @discord.ui.button(label="請假", style=discord.ButtonStyle.secondary, emoji="❌", custom_id="leave_btn", row=0)
     async def leave(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_status_action(interaction, "請假", is_ext=False)
+        await self.handle_status_action(interaction, "請假")
 
     @discord.ui.button(label="再看看", style=discord.ButtonStyle.secondary, emoji="👀", custom_id="maybe_btn", row=0)
     async def maybe(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_status_action(interaction, "再看看", is_ext=False)
-
-    # 第二排與第三排：各職業按鈕（點擊即可複選）
-    @discord.ui.button(label="九靈 💜", style=discord.ButtonStyle.secondary, custom_id="cls_jiuling", row=1)
-    async def jiuling(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_class_toggle(interaction, "九靈")
-
-    @discord.ui.button(label="龍吟 💚", style=discord.ButtonStyle.secondary, custom_id="cls_longyin", row=1)
-    async def longyin(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_class_toggle(interaction, "龍吟")
-
-    @discord.ui.button(label="血河 💖", style=discord.ButtonStyle.secondary, custom_id="cls_xuehe", row=1)
-    async def xuehe(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_class_toggle(interaction, "血河")
-
-    @discord.ui.button(label="鐵衣 🧡", style=discord.ButtonStyle.secondary, custom_id="cls_tieyi", row=1)
-    async def tieyi(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_class_toggle(interaction, "鐵衣")
-
-    @discord.ui.button(label="素問 🩷", style=discord.ButtonStyle.secondary, custom_id="cls_suwen", row=2)
-    async def suwen(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_class_toggle(interaction, "素問")
-
-    @discord.ui.button(label="碎夢 🩶", style=discord.ButtonStyle.secondary, custom_id="cls_suimeng", row=2)
-    async def suimeng(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_class_toggle(interaction, "碎夢")
-
-    @discord.ui.button(label="潮光 💙", style=discord.ButtonStyle.secondary, custom_id="cls_chaoguang", row=2)
-    async def chaoguang(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_class_toggle(interaction, "潮光")
-
-    @discord.ui.button(label="神相 🩵", style=discord.ButtonStyle.secondary, custom_id="cls_shenxiang", row=3)
-    async def shenxiang(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_class_toggle(interaction, "神相")
-
-    @discord.ui.button(label="玄機 💛", style=discord.ButtonStyle.secondary, custom_id="cls_xuanji", row=3)
-    async def xuanji(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_class_toggle(interaction, "玄機")
+        await self.handle_status_action(interaction, "再看看")
 
 
 async def update_event_message(message: discord.Message):
@@ -192,7 +266,7 @@ async def update_event_message(message: discord.Message):
             return
 
         activity, dt, category = event
-        cur.execute("SELECT identifier, status, classes, count, is_external FROM members WHERE message_id = ?", (msg_id,))
+        cur.execute("SELECT identifier, status, classes, count, is_external, external_details FROM members WHERE message_id = ?", (msg_id,))
         members = cur.fetchall()
 
     attend_list = []
@@ -200,25 +274,28 @@ async def update_event_message(message: discord.Message):
     maybe_list = []
     total_attend_count = 0
 
-    for identifier, status, classes_str, count, is_ext in members:
-        class_display = f"【{classes_str}】" if classes_str else "【未選擇職業】"
-
+    for identifier, status, classes_str, count, is_ext, ext_details in members:
         if is_ext:
-            user_display = f"外找 ({count}人)"
             total_attend_count += count
+            if ext_details:
+                for line in ext_details.split("\n"):
+                    attend_list.append(f"• {line} (外找)")
+            else:
+                attend_list.append(f"• 外找 ({count}人)")
         else:
             total_attend_count += 1
+            class_display = f"【{classes_str}】" if classes_str else "【未選擇職業】"
             if identifier.isdigit():
                 user_display = f"<@{identifier}>"
             else:
                 user_display = f"**{identifier}** (手動)"
 
-        if status == "出席":
-            attend_list.append(f"• {class_display} {user_display}")
-        elif status == "請假":
-            leave_list.append(f"• {user_display}")
-        elif status == "再看看":
-            maybe_list.append(f"• {user_display}")
+            if status == "出席":
+                attend_list.append(f"• {class_display} {user_display}")
+            elif status == "請假":
+                leave_list.append(f"• {user_display}")
+            elif status == "再看看":
+                maybe_list.append(f"• {user_display}")
 
     embed = discord.Embed(title=f"⚔️ 打本登記活動", color=discord.Color.blue())
     embed.add_field(name="活動", value=activity, inline=False)
@@ -305,10 +382,10 @@ async def add_member(interaction: discord.Interaction, message_id: str, name: st
             return
 
         cur.execute("""
-            INSERT INTO members (message_id, identifier, status, classes, count, is_external) 
-            VALUES (?, ?, '出席', ?, 1, 0)
+            INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details) 
+            VALUES (?, ?, '出席', ?, 1, 0, '')
             ON CONFLICT(message_id, identifier) 
-            DO UPDATE SET status = '出席', classes = ?, count = 1, is_external = 0
+            DO UPDATE SET status = '出席', classes = ?, count = 1, is_external = 0, external_details = ''
         """, (msg_id, name, class_name, class_name))
         con.commit()
 
