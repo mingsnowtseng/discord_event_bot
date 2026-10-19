@@ -36,6 +36,7 @@ def init_db():
                 category TEXT NOT NULL
             )
         """)
+        # 紀錄資料表：支援個人登記與外找紀錄獨立共存
         con.execute("""
             CREATE TABLE IF NOT EXISTS members (
                 message_id INTEGER NOT NULL,
@@ -139,7 +140,6 @@ class ExternalCountSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         count = int(self.values[0])
-        # 切換成該人數對應的職業滾輪選單介面（直接在聊天室內互動，不開彈窗）
         view = ExternalDetailsView(self.original_message, count)
         await interaction.response.edit_message(
             content=f"🌐 您選擇外找 **{count} 人**。請在下方為每一位外找人員**透過滾輪選單選擇職業**：", 
@@ -159,7 +159,7 @@ class ExternalClassSelect(discord.ui.Select):
         classes = ["九靈", "龍吟", "血河", "鐵衣", "素問", "碎夢", "潮光", "神相", "玄機"]
         options = [discord.SelectOption(label=c, value=c) for c in classes]
         super().__init__(
-            placeholder=f"請選擇第 {person_idx} 位人員的職業...", 
+            placeholder=f"請選擇第 {person_idx} 位外找人員的職業...", 
             min_values=1, max_values=1, 
             options=options, 
             custom_id=f"ext_cls_{person_idx}",
@@ -171,7 +171,7 @@ class ExternalClassSelect(discord.ui.Select):
         await interaction.response.defer()
 
 
-# 4. 聊天室內的外找詳細設定介面（包含最多 5 個滾輪選單與完成按鈕）
+# 4. 聊天室內的外找詳細設定介面
 class ExternalDetailsView(discord.ui.View):
     def __init__(self, original_message: discord.Message, count: int):
         super().__init__(timeout=300)
@@ -179,13 +179,13 @@ class ExternalDetailsView(discord.ui.View):
         self.count = count
         self.selected_classes = ["未填職業"] * count
 
-        # Discord 限制一個 View 最多 5 個元件，若人數較多，我們支援前 5 人的獨立滾輪選單
         for i in range(1, min(count + 1, 6)):
             self.add_item(ExternalClassSelect(i))
 
     @discord.ui.button(label="完成登記", style=discord.ButtonStyle.green, emoji="✅", row=4)
     async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         msg_id = self.original_message.id
+        # 獨立的外找識別碼，不會覆蓋玩家個人的出席資料
         identifier = f"ext_group_{interaction.user.id}"
         
         details = []
@@ -216,14 +216,15 @@ class EventView(discord.ui.View):
 
     async def handle_status_action(self, interaction: discord.Interaction, status: str):
         msg_id = interaction.message.id
+        # 個人使用用戶 ID，與外找完全分開
         identifier = str(interaction.user.id)
 
         with sqlite3.connect(DB_PATH) as con:
             cur = con.cursor()
-            cur.execute("SELECT status, is_external FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
+            cur.execute("SELECT status FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
             row = cur.fetchone()
 
-            if row and row[0] == status and not row[1]:
+            if row and row[0] == status:
                 cur.execute("DELETE FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
                 msg = f"已取消您的登記狀態。"
                 con.commit()
