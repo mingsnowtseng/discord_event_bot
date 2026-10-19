@@ -183,7 +183,7 @@ class ExternalDetailsView(discord.ui.View):
 
     @discord.ui.button(label="完成登記", style=discord.ButtonStyle.green, emoji="✅", row=4)
     async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # 加入 defer 避免 Discord 判定逾時（未及時回應）
+        # 1. 第一時間立刻 defer，防止 Discord 判定未及時回應
         await interaction.response.defer(ephemeral=True)
 
         msg_id = self.original_message.id
@@ -208,12 +208,15 @@ class ExternalDetailsView(discord.ui.View):
 
         await update_event_message(self.original_message)
         
-        # 使用 followup 編輯私密訊息
-        await interaction.followup.edit_message(
-            message_id=interaction.message.id,
-            content=f"✅ 成功登記外找 {self.count} 人！", 
-            view=None
-        )
+        # 2. 使用 followup 移除選單並顯示成功訊息
+        try:
+            await interaction.followup.edit_message(
+                message_id=interaction.message.id,
+                content=f"✅ 成功登記外找 {self.count} 人！", 
+                view=None
+            )
+        except Exception:
+            await interaction.followup.send(f"✅ 成功登記外找 {self.count} 人！", ephemeral=True)
 
 
 # 5. 常駐主選單
