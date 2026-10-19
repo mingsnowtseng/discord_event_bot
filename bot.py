@@ -349,7 +349,7 @@ async def on_ready():
 
 @client.tree.command(name="create_event", description="建立新的打本公告")
 @app_commands.describe(
-    activity="請輸入活動名稱（例如：固團打本、英雄聯盟...）",
+    activity="請輸入活動名稱（例如：固團打本、英雄聯盟...等）",
     datetime_text="請輸入日期與時間（例如：10/19 9:30）",
     category="請輸入副本或拓荒類型（例如：拓荒、一般打本）"
 )
