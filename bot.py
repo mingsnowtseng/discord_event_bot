@@ -351,12 +351,8 @@ async def on_ready():
 @app_commands.describe(
     activity="請輸入活動名稱（例如：英雄決戰）",
     datetime_text="請輸入日期與時間（例如：10/19 9:30）",
-    category="請選擇副本或拓荒類型"
+    category="請輸入副本或拓荒類型（例如：拓荒、一般打本）"
 )
-@app_commands.choices(category=[
-    app_commands.Choice(name="拓荒", value="拓荒"),
-    app_commands.Choice(name="一般打本", value="一般打本")
-])
 async def create_event(interaction: discord.Interaction, activity: str, datetime_text: str, category: str):
     await interaction.response.defer(ephemeral=True)
     
