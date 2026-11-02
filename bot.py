@@ -339,8 +339,8 @@ async def update_event_message(message: discord.Message):
 
     try:
         await message.edit(embed=embed, view=EventView())
-    except Exception as e:
-        print(f"[錯誤] 更新訊息失敗: {e}")
+    except discord.errors.HTTPException as e:
+        print(f"[錯誤] 更新訊息失敗 (可能觸發 Rate Limit): {e}")
 
 
 @client.event
