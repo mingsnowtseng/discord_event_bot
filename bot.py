@@ -225,7 +225,6 @@ class EventView(discord.ui.View):
         super().__init__(timeout=None)
 
     async def handle_status_action(self, interaction: discord.Interaction, status: str):
-        # 💡 優先使用 defer 避免 3 秒逾時與未及時回應的錯誤
         await interaction.response.defer(ephemeral=True)
 
         msg_id = interaction.message.id
@@ -285,6 +284,7 @@ async def update_event_message(message: discord.Message):
         cur.execute("SELECT activity, datetime_text, category FROM events WHERE message_id = ?", (msg_id,))
         event = cur.fetchone()
         if not event:
+            print(f"[警告] update_event_message 找不到對應的活動資料 (message_id: {msg_id})")
             return
         activity, dt, category = event
         
@@ -337,7 +337,10 @@ async def update_event_message(message: discord.Message):
     embed.add_field(name=f"❌ 請假 ({len(leave_list)})", value=leave_text, inline=False)
     embed.add_field(name=f"👀 再看看 ({len(maybe_list)})", value=maybe_text, inline=False)
 
-    await message.edit(embed=embed, view=EventView())
+    try:
+        await message.edit(embed=embed, view=EventView())
+    except Exception as e:
+        print(f"[錯誤] 更新訊息失敗: {e}")
 
 
 @client.event
@@ -412,7 +415,7 @@ async def add_member(interaction: discord.Interaction, message_id: str, name: st
 
         cur.execute("""
             INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details)
-            VALUES (?, ?, '出席', ?, ?, 1, 0, '')
+            VALUES (?, ?, '出席', ?, 1, 0, '')
             ON CONFLICT(message_id, identifier) 
             DO UPDATE SET status = '出席', classes = ?, count = 1, is_external = 0, external_details = ''
         """, (msg_id, name, class_name, class_name))
