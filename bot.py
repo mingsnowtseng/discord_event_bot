@@ -87,7 +87,7 @@ class ClassSelectModalView(discord.ui.View):
             """, (new_classes_str, msg_id, identifier))
             con.commit()
             
-        await update_event_message(self.original_message)
+        await refresh_event_message(interaction, msg_id)
         await interaction.response.send_message(msg, ephemeral=True)
 
     # 第 1 行 (row=0)
@@ -207,7 +207,7 @@ class ExternalDetailsView(discord.ui.View):
             """, (msg_id, identifier, details_str, self.count, details_str, self.count, details_str))
             con.commit()
             
-        await update_event_message(self.original_message)
+        await refresh_event_message(interaction, msg_id)
         
         try:
             await interaction.followup.edit_message(
@@ -225,7 +225,6 @@ class EventView(discord.ui.View):
         super().__init__(timeout=None)
 
     async def handle_status_action(self, interaction: discord.Interaction, status: str):
-        # 💡 確保第一時間回應，避免逾時與未及時回應紅字
         await interaction.response.defer(ephemeral=True)
 
         msg_id = interaction.message.id
@@ -236,13 +235,15 @@ class EventView(discord.ui.View):
             cur.execute("SELECT status FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
             row = cur.fetchone()
             
+            # 點擊相同狀態：取消登記
             if row and row[0] == status:
                 cur.execute("DELETE FROM members WHERE message_id = ? AND identifier = ?", (msg_id, identifier))
-                msg = f"已取消您的登記狀態。"
+                msg = f"已取消您在該活動的登記狀態。"
                 con.commit()
-                await update_event_message(interaction.message)
+                await refresh_event_message(interaction, msg_id)
                 await interaction.followup.send(msg, ephemeral=True)
                 return
+            # 點擊不同狀態：切換狀態（例如：從「請假」改成「出席」）
             else:
                 cur.execute("""
                     INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details)
@@ -252,13 +253,14 @@ class EventView(discord.ui.View):
                 """, (msg_id, identifier, status, status))
                 con.commit()
                 
-        await update_event_message(interaction.message)
+        # 刷新該則公告面板
+        await refresh_event_message(interaction, msg_id)
         
         if status == "出席":
             view = ClassSelectModalView(interaction.message)
-            await interaction.followup.send("✅ 已登記出席！請點擊下方按鈕選擇你的職業（可複選）：", view=view, ephemeral=True)
+            await interaction.followup.send("✅ 已更新為【出席】！請點擊下方按鈕選擇你的職業（可複選）：", view=view, ephemeral=True)
         else:
-            await interaction.followup.send(f"成功切換至：【{status}】", ephemeral=True)
+            await interaction.followup.send(f"已將您的狀態更改為：【{status}】", ephemeral=True)
 
     @discord.ui.button(label="出席", style=discord.ButtonStyle.secondary, emoji="✅", custom_id="attend_btn", row=0)
     async def attend(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -278,17 +280,17 @@ class EventView(discord.ui.View):
         await self.handle_status_action(interaction, "再看看")
 
 
-async def update_event_message(message: discord.Message):
-    msg_id = message.id
+# 核心刷新函數：支援對舊訊息/歷史公告進行狀態更新
+async def refresh_event_message(interaction: discord.Interaction, message_id: int):
     with sqlite3.connect(DB_PATH) as con:
         cur = con.cursor()
-        cur.execute("SELECT activity, datetime_text, category FROM events WHERE message_id = ?", (msg_id,))
+        cur.execute("SELECT activity, datetime_text, category, channel_id FROM events WHERE message_id = ?", (message_id,))
         event = cur.fetchone()
         if not event:
             return
-        activity, dt, category = event
+        activity, dt, category, channel_id = event
         
-        cur.execute("SELECT identifier, status, classes, count, is_external, external_details FROM members WHERE message_id = ?", (msg_id,))
+        cur.execute("SELECT identifier, status, classes, count, is_external, external_details FROM members WHERE message_id = ?", (message_id,))
         members = cur.fetchall()
 
     attend_list = []
@@ -338,9 +340,12 @@ async def update_event_message(message: discord.Message):
     embed.add_field(name=f"👀 再看看 ({len(maybe_list)})", value=maybe_text, inline=False)
 
     try:
-        await message.edit(embed=embed, view=EventView())
+        # 重新抓取該頻道與訊息，防止因為訊息過舊導致的更新失效
+        target_channel = interaction.guild.get_channel(channel_id) or await client.fetch_channel(channel_id)
+        target_message = await target_channel.fetch_message(message_id)
+        await target_message.edit(embed=embed, view=EventView())
     except Exception as e:
-        print(f"[錯誤] 更新訊息失敗: {e}")
+        print(f"[錯誤] 刷新訊息失敗: {e}")
 
 
 @client.event
@@ -401,9 +406,8 @@ async def add_member(interaction: discord.Interaction, message_id: str, name: st
     
     try:
         msg_id = int(message_id)
-        target_message = await interaction.channel.fetch_message(msg_id)
-    except Exception:
-        await interaction.followup.send("找不到該則訊息 ID，請確認是否在同一個頻道中！", ephemeral=True)
+    except ValueError:
+        await interaction.followup.send("訊息 ID 格式不正確！", ephemeral=True)
         return
 
     with sqlite3.connect(DB_PATH) as con:
@@ -421,7 +425,7 @@ async def add_member(interaction: discord.Interaction, message_id: str, name: st
         """, (msg_id, name, class_name, class_name))
         con.commit()
 
-    await update_event_message(target_message)
+    await refresh_event_message(interaction, msg_id)
     await interaction.followup.send(f"已成功幫【{name} ({class_name})】手動登記出席！", ephemeral=True)
 
 client.run(TOKEN)
