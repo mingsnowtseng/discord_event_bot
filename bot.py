@@ -249,10 +249,10 @@ class EventView(discord.ui.View):
             else:
                 cur.execute("""
                     INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details)
-                    VALUES (?, ?, ?, '', 1, 0, '')
+                    VALUES (?, ?, ?, ?, 1, 0, '')
                     ON CONFLICT(message_id, identifier) 
                     DO UPDATE SET status = ?, classes = '', count = 1, is_external = 0, external_details = ''
-                """, (msg_id, identifier, status, status))
+                """, (msg_id, identifier, status, status, status))
                 con.commit()
                 
         await refresh_event_message(interaction, msg_id)
@@ -286,9 +286,29 @@ async def refresh_event_message(interaction: discord.Interaction, message_id: in
         cur = con.cursor()
         cur.execute("SELECT activity, datetime_text, category, channel_id FROM events WHERE message_id = ?", (message_id,))
         event = cur.fetchone()
+        
+        # 💡 自動把舊訊息/未被記錄的訊息補登入資料庫
         if not event:
-            return
-        activity, dt, category, channel_id = event
+            embed = interaction.message.embeds[0] if interaction.message.embeds else None
+            activity = "未知活動"
+            dt = "未知日期"
+            category = "一般"
+            
+            if embed:
+                for field in embed.fields:
+                    if field.name == "活動":
+                        activity = field.value
+                    elif field.name == "日期":
+                        dt = field.value
+                    elif field.name == "分類":
+                        category = field.value
+                        
+            cur.execute("INSERT OR IGNORE INTO events VALUES (?, ?, ?, ?, ?)", 
+                        (message_id, interaction.channel_id, activity, dt, category))
+            con.commit()
+            channel_id = interaction.channel_id
+        else:
+            activity, dt, category, channel_id = event
         
         cur.execute("SELECT identifier, status, classes, count, is_external, external_details FROM members WHERE message_id = ?", (message_id,))
         members = cur.fetchall()
@@ -340,7 +360,6 @@ async def refresh_event_message(interaction: discord.Interaction, message_id: in
     embed.add_field(name=f"👀 再看看 ({len(maybe_list)})", value=maybe_text, inline=False)
 
     try:
-        # 強制從頻道中抓取最新訊息物件，避免快取導致畫面不更新
         target_channel = interaction.guild.get_channel(channel_id) or await client.fetch_channel(channel_id)
         target_message = await target_channel.fetch_message(message_id)
         await target_message.edit(embed=embed, view=EventView())
