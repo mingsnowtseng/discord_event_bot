@@ -225,6 +225,9 @@ class EventView(discord.ui.View):
         super().__init__(timeout=None)
 
     async def handle_status_action(self, interaction: discord.Interaction, status: str):
+        # 💡 優先使用 defer 避免 3 秒逾時與未及時回應的錯誤
+        await interaction.response.defer(ephemeral=True)
+
         msg_id = interaction.message.id
         identifier = str(interaction.user.id)
         
@@ -238,7 +241,7 @@ class EventView(discord.ui.View):
                 msg = f"已取消您的登記狀態。"
                 con.commit()
                 await update_event_message(interaction.message)
-                await interaction.response.send_message(msg, ephemeral=True)
+                await interaction.followup.send(msg, ephemeral=True)
                 return
             else:
                 cur.execute("""
@@ -253,9 +256,9 @@ class EventView(discord.ui.View):
         
         if status == "出席":
             view = ClassSelectModalView(interaction.message)
-            await interaction.response.send_message("✅ 已登記出席！請點擊下方按鈕選擇你的職業（可複選）：", view=view, ephemeral=True)
+            await interaction.followup.send("✅ 已登記出席！請點擊下方按鈕選擇你的職業（可複選）：", view=view, ephemeral=True)
         else:
-            await interaction.response.send_message(f"成功切換至：【{status}】", ephemeral=True)
+            await interaction.followup.send(f"成功切換至：【{status}】", ephemeral=True)
 
     @discord.ui.button(label="出席", style=discord.ButtonStyle.secondary, emoji="✅", custom_id="attend_btn", row=0)
     async def attend(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -409,7 +412,7 @@ async def add_member(interaction: discord.Interaction, message_id: str, name: st
 
         cur.execute("""
             INSERT INTO members (message_id, identifier, status, classes, count, is_external, external_details)
-            VALUES (?, ?, '出席', ?, 1, 0, '')
+            VALUES (?, ?, '出席', ?, ?, 1, 0, '')
             ON CONFLICT(message_id, identifier) 
             DO UPDATE SET status = '出席', classes = ?, count = 1, is_external = 0, external_details = ''
         """, (msg_id, name, class_name, class_name))
