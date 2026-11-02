@@ -225,6 +225,7 @@ class EventView(discord.ui.View):
         super().__init__(timeout=None)
 
     async def handle_status_action(self, interaction: discord.Interaction, status: str):
+        # 💡 確保第一時間回應，避免逾時與未及時回應紅字
         await interaction.response.defer(ephemeral=True)
 
         msg_id = interaction.message.id
@@ -284,7 +285,6 @@ async def update_event_message(message: discord.Message):
         cur.execute("SELECT activity, datetime_text, category FROM events WHERE message_id = ?", (msg_id,))
         event = cur.fetchone()
         if not event:
-            print(f"[警告] update_event_message 找不到對應的活動資料 (message_id: {msg_id})")
             return
         activity, dt, category = event
         
@@ -339,8 +339,8 @@ async def update_event_message(message: discord.Message):
 
     try:
         await message.edit(embed=embed, view=EventView())
-    except discord.errors.HTTPException as e:
-        print(f"[錯誤] 更新訊息失敗 (可能觸發 Rate Limit): {e}")
+    except Exception as e:
+        print(f"[錯誤] 更新訊息失敗: {e}")
 
 
 @client.event
